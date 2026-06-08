@@ -1,0 +1,25 @@
+{
+  "name": "mini-react",
+  "version": "1.0.0",
+  "description": "一个用于学习 React 18 实现原理的最小可运行实现",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node smoke-test.mjs"
+  },
+  "keywords": [
+    "react",
+    "mini-react",
+    "fiber",
+    "hooks",
+    "concurrent",
+    "学习"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vite": "^5.4.0"
+  }
+}
