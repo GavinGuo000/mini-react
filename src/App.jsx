@@ -1,3 +1,15 @@
+/**
+ * App.jsx —— mini-react 演示应用的根组件
+ *
+ * 本文件包含多个演示组件，每个组件展示了 mini-react 的一个核心特性：
+ *   1. Counter    — useState 基础状态管理
+ *   2. Timer      — useEffect 副作用 + useRef 跨渲染引用
+ *   3. KeyedList  — key diff 列表协调
+ *   4. ReducerMemo — useReducer 复杂状态 + useMemo 计算缓存
+ *   5. Toggle     — 条件渲染 + Fragment
+ */
+
+// 从 mini-react 中导入所有演示所需的 hooks
 import {
   useState,
   useEffect,
@@ -6,7 +18,14 @@ import {
   useReducer,
 } from "/src/mini-react/index.js";
 
-// 1) useState —— 最基础的状态
+/**
+ * Counter 组件 —— 演示 useState 基础状态管理。
+ *
+ * 【演示要点】
+ *   - useState 创建状态值和更新函数
+ *   - 函数式更新：setCount(c => c + 1)，基于当前值计算新值
+ *   - 直接设置值：setCount(0) 重置
+ */
 function Counter() {
   const [count, setCount] = useState(0);
   return (
@@ -25,13 +44,25 @@ function Counter() {
   );
 }
 
-// 2) useEffect + useRef —— 副作用与跨渲染引用
+/**
+ * Timer 组件 —— 演示 useEffect + useRef。
+ *
+ * 【演示要点】
+ *   - useEffect：创建定时器（副作用），返回清理函数（清除定时器）
+ *   - 依赖数组 [running]：只在 running 变化时重新创建/清除定时器
+ *   - useRef：跨渲染周期保存渲染次数，修改 ref.current 不触发重渲染
+ */
 function Timer() {
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(true);
+  // useRef 创建一个跨渲染的可变容器，用于记录组件被渲染的次数
+  // 每次渲染都 +1，但不会触发额外的重渲染
   const renderCount = useRef(0);
   renderCount.current += 1;
 
+  // useEffect：根据 running 状态创建或清除定时器
+  // 依赖数组 [running]：只有 running 变化时才重新执行
+  // 清理函数 return () => clearInterval(id)：在 running 变化或组件卸载时执行
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -58,7 +89,16 @@ function Timer() {
   );
 }
 
-// 3) key diff —— 增删 / 反转列表时复用节点、保留状态
+/**
+ * KeyedList 组件 —— 演示 key diff 算法与列表协调。
+ *
+ * 【演示要点】
+ *   - key 的作用：通过 key 建立新旧节点的身份对应关系
+ *   - 增删操作：新增/删除时，只有对应节点被标记 PLACEMENT/DELETION
+ *   - 随机排序：节点位置变化时，通过 lastPlacedIndex 检测移动
+ *   - 复用 DOM：key 相同的节点会复用已有的 DOM 和状态
+ */
+/** 全局自增 ID 生成器，用于给新增的列表项分配唯一 key */
 let uid = 3;
 function KeyedList() {
   const [items, setItems] = useState([
@@ -112,7 +152,13 @@ function KeyedList() {
   );
 }
 
-// 4) useReducer + useMemo —— 复杂状态与计算缓存
+/**
+ * ReducerMemo 组件 —— 演示 useReducer + useMemo。
+ *
+ * 【演示要点】
+ *   - useReducer：通过 dispatch(action) 发送意图，reducer 函数计算新状态
+ *   - useMemo：缓存昂贵的阶乘计算结果，只在 n 变化时才重新计算
+ */
 function ReducerMemo() {
   const [state, dispatch] = useReducer(
     (s, action) => {
@@ -153,7 +199,15 @@ function ReducerMemo() {
   );
 }
 
-// 5) 条件渲染 + Fragment
+/**
+ * Toggle 组件 —— 演示条件渲染 + Fragment。
+ *
+ * 【演示要点】
+ *   - 条件渲染：open 为 false 时，子树不会被渲染
+ *     （在 reconciler 中会被 isRenderable 过滤掉）
+ *   - Fragment：<>...</> 不会产生额外的 DOM 节点，
+ *     在 Fiber 协调时直接处理其 children
+ */
 function Toggle() {
   const [open, setOpen] = useState(true);
   return (
@@ -174,6 +228,10 @@ function Toggle() {
   );
 }
 
+/**
+ * App —— 根组件，组装所有演示组件。
+ * 作为整个组件树的起点，由 main.jsx 的 createRoot().render(<App />) 渲染。
+ */
 export default function App() {
   return (
     <div>
