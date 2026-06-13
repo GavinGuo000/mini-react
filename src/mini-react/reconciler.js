@@ -33,6 +33,7 @@ import { commitRoot } from "./commit.js";
 import { scheduleWork } from "./scheduler.js";
 import { prepareToUseHooks } from "./hooks.js";
 import { TEXT_ELEMENT, Fragment } from "./createElement.js";
+import { registerRootEvents } from "./syntheticEvents.js";
 
 // ============================================================================
 // 模块级调度状态
@@ -73,6 +74,9 @@ let isLoopScheduled = false;
  * @param {HTMLElement} container - 真实 DOM 容器节点（如 document.getElementById('root')）
  */
 export function render(element, container) {
+  // 在根容器上注册合成事件委托监听器（首次渲染只注册一次）
+  registerRootEvents(container);
+
   wipRoot = {
     dom: container,                 // 根 Fiber 直接引用真实容器 DOM
     props: { children: [element] }, // 顶层组件作为唯一的子节点

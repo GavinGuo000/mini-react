@@ -16,7 +16,7 @@
  *   - 这里为了简化，将 useEffect 也放在 commit 末尾同步执行
  */
 
-import { updateDom } from "./dom.js";
+import { updateDom, associateFiber } from "./dom.js";
 
 /**
  * commitRoot —— commit 阶段的入口函数。
@@ -68,6 +68,8 @@ function commitWork(fiber) {
       // 这是复用但需要移动的节点：props 也可能变了，先更新属性再移动位置
       updateDom(fiber.dom, fiber.alternate.props, fiber.props);
     }
+    // 更新 DOM 节点上的 Fiber 引用（复用节点时需要指向新 Fiber）
+    associateFiber(fiber.dom, fiber);
     // 找到最近的有 DOM 的父级（跳过函数组件/Fragment）
     const parentDom = getParentDom(fiber);
     // 找到右侧最近的已挂载兄弟节点作为 insertBefore 锚点
@@ -77,6 +79,8 @@ function commitWork(fiber) {
 
   } else if (fiber.effectTag === "UPDATE" && fiber.dom != null) {
     // UPDATE：节点位置不变，只更新 props（属性、事件等）
+    // 同时更新 DOM 节点上的 Fiber 引用，指向新的 Fiber 对象
+    associateFiber(fiber.dom, fiber);
     updateDom(fiber.dom, fiber.alternate.props, fiber.props);
   }
 

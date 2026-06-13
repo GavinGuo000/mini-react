@@ -3,20 +3,21 @@
  *
  * 【职责】
  *   本模块是 Fiber 与真实 DOM 之间的桥梁。
- *   Fiber 树在 render 阶段只负责“打标”（PLACEMENT/UPDATE/DELETION），
- *   而实际创建 DOM 节点、设置属性、绑定事件的工作都由本模块完成。
+ *   Fiber 树在 render 阶段只负责"打标"（PLACEMENT/UPDATE/DELETION），
+ *   而实际创建 DOM 节点、设置属性的工作都由本模块完成。
  *
- * 【处理的三类 props】
- *   1. 事件属性   onClick / onInput ...        -> addEventListener / removeEventListener
- *   2. children   由协调器单独处理，这里跳过
- *   3. 普通属性   className / style / value ... -> 直接挂到 DOM 节点上
+ * 【处理的 props 分类】
+ *   1. children   由协调器单独处理，这里跳过
+ *   2. 普通属性   className / style / value ... -> 直接挂到 DOM 节点上
  *
- * 【与 React 的区别】
- *   React 使用“合成事件”（SyntheticEvent），将所有事件委托到 document 上统一处理。
- *   这里我们直接使用原生 addEventListener，更简单但缺少事件池、事件委托等优化。
+ * 【事件处理】
+ *   事件不再由本模块直接绑定到 DOM 节点上。
+ *   所有事件通过「合成事件系统」(syntheticEvents.js) 统一委托到根容器，
+ *   在 Fiber 树中模拟冒泡派发，实现事件委托 + stopPropagation。
  */
 
 import { TEXT_ELEMENT } from "./createElement.js";
+import { FIBER_PROP } from "./syntheticEvents.js";
 
 // ============================================================================
 // 工具函数：用于分类和比较 props 的纯函数
@@ -78,40 +79,51 @@ export function createDom(fiber) {
       ? document.createTextNode("")
       : document.createElement(fiber.type);
 
-  // 把 Fiber 上的 props 应用到真实 DOM 上（包括属性、事件、样式等）
+  // 建立 DOM -> Fiber 的反向引用，供合成事件系统派发时使用
+  dom[FIBER_PROP] = fiber;
+
+  // 把 Fiber 上的 props 应用到真实 DOM 上（属性、样式等，事件由合成事件系统处理）
   updateDom(dom, {}, fiber.props);
   return dom;
 }
 
 /**
- * 对比新旧 props，最小化更新真实 DOM 上的属性和事件。
+ * 更新 DOM 节点上的 Fiber 引用。
+ *
+ * 【调用时机】
+ *   在 commit 阶段，UPDATE 类型的 Fiber 需要把新的 Fiber 对象
+ *   重新关联到已有的 DOM 节点上（因为每次渲染会产生新的 Fiber 对象）。
+ *
+ * @param {HTMLElement|Text} dom - 真实 DOM 节点
+ * @param {object} fiber - 新的 Fiber 节点
+ */
+export function associateFiber(dom, fiber) {
+  dom[FIBER_PROP] = fiber;
+}
+
+/**
+ * 对比新旧 props，最小化更新真实 DOM 上的属性。
  *
  * 【核心思想】
  *   这是 React「同一节点更新」时的核心逻辑。
  *   通过对比 prevProps 和 nextProps，只对发生变化的部分做精确更新，
  *   避免全量替换带来的性能损失。
  *
- * 【更新步骤】（顺序很重要）
- *   1. 移除旧的事件监听  — 防止已删除或已变更的事件被重复触发
- *   2. 删除已消失的属性 — 把 DOM 上多余的 attribute/property 清除掉
- *   3. 设置新增或变化的属性 — 把新值写入 DOM
- *   4. 绑定新增或变化的事件 — 确保新的事件处理器生效
+ * 【更新步骤】
+ *   1. 删除已消失的属性 — 把 DOM 上多余的 attribute/property 清除掉
+ *   2. 设置新增或变化的属性 — 把新值写入 DOM
+ *
+ * 【事件说明】
+ *   事件属性（onClick 等）不再在 DOM 节点上直接绑定/移除。
+ *   所有事件由「合成事件系统」统一委托到根容器处理，
+ *   事件处理器直接从 Fiber.props 中读取，无需手动管理 addEventListener。
  *
  * @param {HTMLElement|Text} dom - 要更新的真实 DOM 节点
  * @param {object} prevProps - 上一次渲染时的 props
  * @param {object} nextProps - 本次渲染的 props
  */
 export function updateDom(dom, prevProps, nextProps) {
-  // 步骤 1：移除已经不存在或发生变化的旧事件监听
-  // 为什么要先移除？因为如果事件的回调函数变了，不移除旧的就会同时触发新旧两个回调
-  Object.keys(prevProps)
-    .filter(isEvent)
-    .filter((key) => !(key in nextProps) || isNew(prevProps, nextProps)(key))
-    .forEach((name) => {
-      dom.removeEventListener(eventType(name), prevProps[name]);
-    });
-
-  // 步骤 2：删除已经不存在的旧属性
+  // 步骤 1：删除已经不存在的旧属性
   // 例如上次有 disabled={true}，这次没有了，就需要把 disabled 属性移除
   Object.keys(prevProps)
     .filter(isProperty)
@@ -120,22 +132,13 @@ export function updateDom(dom, prevProps, nextProps) {
       setProperty(dom, name, null);
     });
 
-  // 步骤 3：设置新增或变化的属性
+  // 步骤 2：设置新增或变化的属性
   // 包括 className、style、value、href 等所有非事件属性
   Object.keys(nextProps)
     .filter(isProperty)
     .filter(isNew(prevProps, nextProps))
     .forEach((name) => {
       setProperty(dom, name, nextProps[name]);
-    });
-
-  // 步骤 4：绑定新增或变化的事件监听
-  // 将新的回调函数通过 addEventListener 绑定到 DOM 节点上
-  Object.keys(nextProps)
-    .filter(isEvent)
-    .filter(isNew(prevProps, nextProps))
-    .forEach((name) => {
-      dom.addEventListener(eventType(name), nextProps[name]);
     });
 }
 
